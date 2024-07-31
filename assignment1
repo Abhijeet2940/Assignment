@@ -1,0 +1,171 @@
+#include <iostream>
+#include <vector>
+#include <unordered_map>
+#include <queue>
+#include <stack>
+#include <limits>
+#include <algorithm>
+#include <thread>
+#include <mutex>
+
+// Mutex for thread safety
+std::mutex mtx;
+
+// Base class for DroneOperation
+class DroneOperation {
+public:
+    virtual void execute() = 0; // Pure virtual function for polymorphism
+};
+
+class TakeOff : public DroneOperation {
+public:
+    void execute() override {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::cout << "Drone is taking off." << std::endl;
+    }
+};
+
+class ReturnToHome : public DroneOperation {
+public:
+    void execute() override {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::cout << "Drone is returning to home." << std::endl;
+    }
+};
+
+class Land : public DroneOperation {
+public:
+    void execute() override {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::cout << "Drone is landing." << std::endl;
+    }
+};
+
+class Failure : public DroneOperation {
+public:
+    void execute() override {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::cout << "Drone operation failed." << std::endl;
+    }
+};
+
+class Survey : public DroneOperation {
+public:
+    void execute() override {
+        std::lock_guard<std::mutex> lock(mtx);
+        std::cout << "Drone is surveying the area." << std::endl;
+    }
+};
+
+class MissionPlanning {
+public:
+    // Graph structure to represent the nodes and edges
+    struct Edge {
+        int destination;
+        double weight;
+    };
+    
+    using Graph = std::unordered_map<int, std::vector<Edge>>;
+    Graph graph;
+
+    // Add an edge to the graph
+    void addEdge(int source, int destination, double weight) {
+        graph[source].push_back({destination, weight});
+        graph[destination].push_back({source, weight}); // Assuming undirected graph
+    }
+
+    // Dijkstra's algorithm for shortest path
+    std::vector<int> dijkstra(int start, int end) {
+        std::unordered_map<int, double> distances;
+        std::unordered_map<int, int> previous;
+        auto compare = [](const std::pair<int, double>& left, const std::pair<int, double>& right) { return left.second > right.second; };
+        std::priority_queue<std::pair<int, double>, std::vector<std::pair<int, double>>, decltype(compare)> priorityQueue(compare);
+
+        for (const auto& node : graph) {
+            distances[node.first] = std::numeric_limits<double>::infinity();
+        }
+        distances[start] = 0;
+        priorityQueue.push({start, 0});
+
+        while (!priorityQueue.empty()) {
+            int current = priorityQueue.top().first;
+            priorityQueue.pop();
+
+            if (current == end) break;
+
+            for (const auto& neighbor : graph[current]) {
+                double newDist = distances[current] + neighbor.weight;
+                if (newDist < distances[neighbor.destination]) {
+                    distances[neighbor.destination] = newDist;
+                    previous[neighbor.destination] = current;
+                    priorityQueue.push({neighbor.destination, newDist});
+                }
+            }
+        }
+
+        // Reconstruct the path
+        std::vector<int> path;
+        for (int at = end; at != start; at = previous[at]) {
+            path.push_back(at);
+        }
+        path.push_back(start);
+        std::reverse(path.begin(), path.end());
+        return path;
+    }
+
+    void generateGraph(int numNodes) {
+        for (int i = 0; i < numNodes; ++i) {
+            for (int j = i + 1; j < numNodes; ++j) {
+                double weight = static_cast<double>(rand()) / RAND_MAX * 10; // Random weight between 0 and 10
+                addEdge(i, j, weight);
+            }
+        }
+    }
+};
+
+void droneOperationWrapper(DroneOperation* operation) {
+    operation->execute();
+}
+
+int main() {
+    TakeOff takeOff;
+    ReturnToHome returnToHome;
+    Land land;
+    Survey survey;
+    Failure failure;
+
+    // Simulate the takeoff operation
+    std::thread takeOffThread(droneOperationWrapper, &takeOff);
+    takeOffThread.join();
+
+    // Create mission planning and generate a graph with 100 nodes
+    MissionPlanning missionPlanning;
+    missionPlanning.generateGraph(100);
+
+    int startNode = 0;
+    int endNode = 99;
+
+    // Find the shortest path from startNode to endNode
+    auto path = missionPlanning.dijkstra(startNode, endNode);
+
+    // Print the path
+    std::cout << "Path from " << startNode << " to " << endNode << ": ";
+    for (const auto& node : path) {
+        std::cout << node << " ";
+    }
+    std::cout << std::endl;
+
+    // Simulate the survey operation
+    std::thread surveyThread(droneOperationWrapper, &survey);
+    surveyThread.join();
+
+    // Simulate the return to home operation
+    std::thread returnToHomeThread(droneOperationWrapper, &returnToHome);
+    returnToHomeThread.join();
+
+    // Simulate the landing operation
+    std::thread landThread(droneOperationWrapper, &land);
+    landThread.join();
+
+    return 0;
+}
